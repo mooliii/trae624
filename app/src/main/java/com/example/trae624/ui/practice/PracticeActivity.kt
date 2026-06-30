@@ -306,7 +306,7 @@ class PracticeActivity : AppCompatActivity() {
     private fun highlightOptions(correctAnswer: String?, selectedAnswer: String?) {
         val correctColor = ContextCompat.getColor(this, android.R.color.holo_green_dark)
         val wrongColor = ContextCompat.getColor(this, android.R.color.holo_red_dark)
-        val defaultColor = ContextCompat.getColor(this, android.R.color.darker_gray)
+        val defaultColor = ContextCompat.getColor(this, android.R.color.black)
 
         val optionMap = mapOf(
             "A" to btnOptionA, "B" to btnOptionB,
