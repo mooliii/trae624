@@ -220,50 +220,45 @@ class SettingsActivity : AppCompatActivity() {
                 val apkFile = withContext(Dispatchers.IO) {
                     val downloadDir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
                             ?: throw Exception("存储不可用")
-                    val file = java.io.File(downloadDir, "trae624_update.apk")
                     val tempFile = java.io.File(downloadDir, "trae624_update.tmp")
 
-                    // 下载文件总大小（从 HTTP 响应获取）
-                    var total = 0L
-
-                    // 先解析最终下载 URL（跟随重定向），获取文件大小
-                    val finalUrl = getFinalRedirectUrl(info.downloadUrl)
-                    val conn = URL(finalUrl).openConnection() as HttpURLConnection
+                    // 直接使用 browser_download_url，HttpURLConnection 会自动跟随重定向
+                    val url = URL(info.downloadUrl)
+                    val conn = url.openConnection() as HttpURLConnection
                     conn.setRequestProperty("User-Agent", "trae624")
-                    conn.setRequestProperty("Connection", "keep-alive")
+                    conn.instanceFollowRedirects = true
+                    conn.connectTimeout = 30000
+                    conn.readTimeout = 30000
 
-                    // 断点续传：检查临时文件
+                    // 断点续传
                     var downloaded = tempFile.length()
                     if (downloaded > 0) {
                         conn.setRequestProperty("Range", "bytes=$downloaded-")
                     }
-
-                    conn.connectTimeout = 30000
-                    conn.readTimeout = 30000
                     conn.connect()
 
                     val code = conn.responseCode
-                    if (code == 206) {
-                        // 支持断点续传
-                        val contentRange = conn.getHeaderField("Content-Range")
-                        total = contentRange?.substringAfter("/")?.toLongOrNull()
-                                ?: (conn.contentLengthLong + downloaded)
-                    } else if (code == 200) {
-                        // 不支持续传或从头开始
-                        total = conn.contentLengthLong
-                        downloaded = 0  // 从头下载，忽略临时文件
-                    } else {
-                        throw Exception("服务器响应异常: $code")
+                    val total = when (code) {
+                        206 -> {
+                            val contentRange = conn.getHeaderField("Content-Range")
+                            contentRange?.substringAfter("/")?.toLongOrNull()
+                                    ?: (conn.contentLengthLong + downloaded)
+                        }
+                        200 -> {
+                            downloaded = 0
+                            conn.contentLengthLong
+                        }
+                        else -> throw Exception("服务器响应异常: $code")
                     }
 
                     val input = java.io.BufferedInputStream(conn.inputStream, 65536)
-                    val output = java.io.FileOutputStream(tempFile, downloaded > 0 && code == 206)
-                    val buffer = ByteArray(65536) // 64KB 缓冲区
+                    val output = java.io.FileOutputStream(tempFile, code == 206)
+                    val buffer = ByteArray(65536)
 
                     withContext(Dispatchers.Main) {
                         progressBar.max = 100
                         progressBar.isIndeterminate = total <= 0
-                        tvStatus.text = if (downloaded > 0) "继续下载..." else "正在下载..."
+                        tvStatus.text = if (code == 206) "继续下载..." else "正在下载..."
                     }
 
                     while (true) {
@@ -282,6 +277,7 @@ class SettingsActivity : AppCompatActivity() {
                     output.close()
                     input.close()
 
+                    val file = java.io.File(downloadDir, "trae624_update.apk")
                     if (file.exists()) file.delete()
                     tempFile.renameTo(file)
                     file
@@ -300,30 +296,6 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
             }
         }
-    }
-
-    /** 跟踪重定向，获取最终的下载 URL */
-    private fun getFinalRedirectUrl(urlString: String): String {
-        var url = urlString
-        var conn: HttpURLConnection? = null
-        repeat(5) {
-            conn = URL(url).openConnection() as HttpURLConnection
-            conn!!.setRequestProperty("User-Agent", "trae624")
-            conn!!.instanceFollowRedirects = false
-            conn!!.connectTimeout = 10000
-            conn!!.readTimeout = 10000
-            conn!!.connect()
-            val code = conn!!.responseCode
-            if (code in 300..399) {
-                url = conn!!.getHeaderField("Location") ?: return url
-                conn!!.disconnect()
-            } else {
-                conn!!.disconnect()
-                return url
-            }
-        }
-        conn?.disconnect()
-        return url
     }
 
     private fun installApk(file: java.io.File) {
