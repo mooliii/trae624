@@ -38,6 +38,7 @@ class SettingsActivity : AppCompatActivity() {
     private var latestVersionInfo: UpdateInfo? = null
     private var isCheckingUpdate = false
     private lateinit var badgeUpdate: TextView
+    private lateinit var tvUpdateStatus: TextView
 
     data class UpdateInfo(
         val versionCode: Int,
@@ -57,16 +58,16 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.title = "设置"
 
         val pkgInfo = try { packageManager.getPackageInfo(packageName, 0) } catch (e: Exception) { null }
-        currentVersionCode = pkgInfo?.let {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) it.longVersionCode.toInt()
-            else @Suppress("DEPRECATION") it.versionCode
-        } ?: 1
         val versionName = pkgInfo?.versionName ?: "1.0.0"
+        currentVersionCode = parseVersionCode(versionName)
 
         findViewById<TextView>(R.id.tvVersion).text = "v$versionName"
         badgeUpdate = findViewById(R.id.badgeUpdate)
+        tvUpdateStatus = findViewById(R.id.tvUpdateStatus)
 
         setupButtons()
+        // 进入设置时自动检查更新（静默模式，只更新 UI 状态）
+        checkUpdate(interactive = false)
     }
 
     private fun setupButtons() {
@@ -77,7 +78,7 @@ class SettingsActivity : AppCompatActivity() {
             importData()
         }
         findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardUpdate)?.setOnClickListener {
-            checkUpdate()
+            checkUpdate(interactive = true)
         }
     }
 
@@ -179,26 +180,42 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun checkUpdate() {
+    private fun checkUpdate(interactive: Boolean = true) {
         if (isCheckingUpdate) return
         isCheckingUpdate = true
         lifecycleScope.launch {
             try {
                 val info = fetchLatestRelease()
                 if (info == null) {
-                    Toast.makeText(this@SettingsActivity, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                    if (interactive) {
+                        Toast.makeText(this@SettingsActivity, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                    }
                     return@launch
                 }
                 latestVersionInfo = info
                 if (info.versionCode > currentVersionCode) {
                     badgeUpdate.visibility = android.view.View.VISIBLE
-                    showUpdateDialog(info)
+                    badgeUpdate.setBackgroundResource(R.drawable.circle_red)
+                    tvUpdateStatus.visibility = android.view.View.VISIBLE
+                    tvUpdateStatus.text = "v${info.versionName} 可更新"
+                    tvUpdateStatus.setTextColor(0xFFE53935.toInt())
+                    if (interactive) {
+                        showUpdateDialog(info)
+                    }
                 } else {
-                    badgeUpdate.visibility = android.view.View.GONE
-                    Toast.makeText(this@SettingsActivity, "已是最新版本", Toast.LENGTH_SHORT).show()
+                    badgeUpdate.visibility = android.view.View.VISIBLE
+                    badgeUpdate.setBackgroundResource(R.drawable.circle_green)
+                    tvUpdateStatus.visibility = android.view.View.VISIBLE
+                    tvUpdateStatus.text = "已是最新版本"
+                    tvUpdateStatus.setTextColor(0xFF4CAF50.toInt())
+                    if (interactive) {
+                        Toast.makeText(this@SettingsActivity, "已是最新版本", Toast.LENGTH_LONG).show()
+                    }
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@SettingsActivity, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                if (interactive) {
+                    Toast.makeText(this@SettingsActivity, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                }
             } finally {
                 isCheckingUpdate = false
             }
@@ -206,7 +223,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showUpdateDialog(info: UpdateInfo) {
-        badgeUpdate.visibility = android.view.View.GONE
         AlertDialog.Builder(this)
             .setTitle("发现新版本 v${info.versionName}")
             .setMessage(info.changelog)
@@ -329,12 +345,8 @@ class SettingsActivity : AppCompatActivity() {
     private fun getApkVersionCode(apkFile: java.io.File): Int {
         return try {
             val pkgInfo = packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
-            pkgInfo?.let {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P)
-                    it.longVersionCode.toInt()
-                else
-                    @Suppress("DEPRECATION") it.versionCode
-            } ?: -1
+            val vName = pkgInfo?.versionName ?: return -1
+            parseVersionCode(vName)
         } catch (e: Exception) { -1 }
     }
 
