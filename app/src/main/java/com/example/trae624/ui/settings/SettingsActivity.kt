@@ -36,6 +36,7 @@ class SettingsActivity : AppCompatActivity() {
     private val repo by lazy { (application as TraeApp).repository }
     private var currentVersionCode = 0
     private var latestVersionInfo: UpdateInfo? = null
+    private var isCheckingUpdate = false
 
     data class UpdateInfo(
         val versionCode: Int,
@@ -176,6 +177,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun checkUpdate() {
+        if (isCheckingUpdate) return
+        isCheckingUpdate = true
         lifecycleScope.launch {
             try {
                 val info = fetchLatestRelease()
@@ -191,6 +194,8 @@ class SettingsActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@SettingsActivity, "检查失败，请稍后重试", Toast.LENGTH_SHORT).show()
+            } finally {
+                isCheckingUpdate = false
             }
         }
     }
@@ -230,7 +235,7 @@ class SettingsActivity : AppCompatActivity() {
                     val file = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "trae624_update.apk")
                     if (file.exists()) file.delete()
                     val output = java.io.FileOutputStream(file)
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(65536)
                     var downloaded = 0L
 
                     // 进度条初始化
@@ -267,11 +272,12 @@ class SettingsActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 dialog.dismiss()
                 val msg = when {
-                    e.message?.contains("Unable to resolve host") == true -> "网络连接失败，请检查网络"
-                    e.message?.contains("timeout") == true -> "下载超时，请稍后重试"
-                    e.message?.contains("403") == true -> "下载受限，请稍后重试"
-                    else -> "下载失败：${e.message}"
-                }
+                        e.message?.contains("Unable to resolve host") == true -> "网络连接失败，请检查网络"
+                        e.message?.contains("timeout") == true -> "下载超时，请稍后重试"
+                        e.message?.contains("403") == true -> "下载受限，请稍后重试"
+                        e.message?.contains("failed to connect") == true -> "网络连接失败，无法访问更新服务器"
+                        else -> "下载失败：${e.message}"
+                    }
                 Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
             }
         }
