@@ -37,6 +37,13 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            outputFileName = "trae624_v${variant.versionName}.apk"
+        }
+    }
 }
 
 dependencies {
