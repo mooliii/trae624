@@ -37,6 +37,7 @@ class SettingsActivity : AppCompatActivity() {
     private var currentVersionCode = 0
     private var latestVersionInfo: UpdateInfo? = null
     private var isCheckingUpdate = false
+    private lateinit var badgeUpdate: TextView
 
     data class UpdateInfo(
         val versionCode: Int,
@@ -63,6 +64,7 @@ class SettingsActivity : AppCompatActivity() {
         val versionName = pkgInfo?.versionName ?: "1.0.0"
 
         findViewById<TextView>(R.id.tvVersion).text = "v$versionName"
+        badgeUpdate = findViewById(R.id.badgeUpdate)
 
         setupButtons()
     }
@@ -189,8 +191,10 @@ class SettingsActivity : AppCompatActivity() {
                 }
                 latestVersionInfo = info
                 if (info.versionCode > currentVersionCode) {
+                    badgeUpdate.visibility = android.view.View.VISIBLE
                     showUpdateDialog(info)
                 } else {
+                    badgeUpdate.visibility = android.view.View.GONE
                     Toast.makeText(this@SettingsActivity, "已是最新版本", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -202,6 +206,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showUpdateDialog(info: UpdateInfo) {
+        badgeUpdate.visibility = android.view.View.GONE
         AlertDialog.Builder(this)
             .setTitle("发现新版本 v${info.versionName}")
             .setMessage(info.changelog)
@@ -225,6 +230,13 @@ class SettingsActivity : AppCompatActivity() {
             try {
                 val apkFile = downloadFile(info, progressBar, tvStatus)
                 dialog.dismiss()
+                // 检查下载的 APK 版本，与当前版本一致则不安装
+                val apkVersionCode = getApkVersionCode(apkFile)
+                if (apkVersionCode > 0 && apkVersionCode <= currentVersionCode) {
+                    apkFile.delete()
+                    Toast.makeText(this@SettingsActivity, "已是最新版本，无需更新", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 installApk(apkFile)
             } catch (e: Exception) {
                 dialog.dismiss()
@@ -312,6 +324,18 @@ class SettingsActivity : AppCompatActivity() {
         output.close()
         input.close()
         file
+    }
+
+    private fun getApkVersionCode(apkFile: java.io.File): Int {
+        return try {
+            val pkgInfo = packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            pkgInfo?.let {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P)
+                    it.longVersionCode.toInt()
+                else
+                    @Suppress("DEPRECATION") it.versionCode
+            } ?: -1
+        } catch (e: Exception) { -1 }
     }
 
     private fun installApk(file: java.io.File) {
