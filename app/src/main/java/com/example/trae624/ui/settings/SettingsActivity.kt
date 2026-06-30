@@ -42,7 +42,8 @@ class SettingsActivity : AppCompatActivity() {
         val versionCode: Int,
         val versionName: String,
         val downloadUrl: String,
-        val changelog: String
+        val changelog: String,
+        val mirrorDownloadUrl: String = ""
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -222,65 +223,95 @@ class SettingsActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val apkFile = withContext(Dispatchers.IO) {
-                    val url = URL(info.downloadUrl)
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.setRequestProperty("User-Agent", "trae624")
-                    conn.instanceFollowRedirects = true
-                    conn.connectTimeout = 30000
-                    conn.readTimeout = 30000
-                    // 先获取输入流（会跟随重定向），再获取最终响应的大小
-                    val input = conn.inputStream
-                    val total = conn.contentLengthLong
-                    val file = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "trae624_update.apk")
-                    if (file.exists()) file.delete()
-                    val output = java.io.FileOutputStream(file)
-                    val buffer = ByteArray(65536)
-                    var downloaded = 0L
-
-                    // 进度条初始化
-                    withContext(Dispatchers.Main) {
-                        if (total > 0) {
-                            progressBar.max = 100
-                            progressBar.isIndeterminate = false
-                        } else {
-                            progressBar.isIndeterminate = true
-                        }
-                        tvStatus.text = "正在下载..."
-                    }
-
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-                        if (total > 0) {
-                            val percent = ((downloaded * 100) / total).toInt()
-                            withContext(Dispatchers.Main) {
-                                progressBar.progress = percent
-                                tvStatus.text = "正在下载... $percent%"
-                            }
-                        }
-                    }
-                    output.close()
-                    input.close()
-                    file
-                }
-
+                val apkFile = downloadFile(info, progressBar, tvStatus)
                 dialog.dismiss()
                 installApk(apkFile)
             } catch (e: Exception) {
                 dialog.dismiss()
                 val msg = when {
-                        e.message?.contains("Unable to resolve host") == true -> "网络连接失败，请检查网络"
-                        e.message?.contains("timeout") == true -> "下载超时，请稍后重试"
-                        e.message?.contains("403") == true -> "下载受限，请稍后重试"
-                        e.message?.contains("failed to connect") == true -> "网络连接失败，无法访问更新服务器"
-                        else -> "下载失败：${e.message}"
-                    }
+                    e.message?.contains("Unable to resolve host") == true -> "网络连接失败，请检查网络"
+                    e.message?.contains("timeout") == true -> "下载超时，请稍后重试"
+                    e.message?.contains("403") == true -> "下载受限，请稍后重试"
+                    e.message?.contains("failed to connect") == true -> "网络连接失败，无法访问更新服务器"
+                    else -> "下载失败：${e.message}"
+                }
                 Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private suspend fun downloadFile(
+        info: UpdateInfo,
+        progressBar: ProgressBar,
+        tvStatus: TextView
+    ): java.io.File = withContext(Dispatchers.IO) {
+        val urlsToTry = mutableListOf(info.downloadUrl)
+        if (info.mirrorDownloadUrl.isNotBlank() && info.mirrorDownloadUrl != info.downloadUrl) {
+            urlsToTry.add(0, info.mirrorDownloadUrl) // 镜像优先
+        }
+
+        var lastException: Exception? = null
+        for (urlStr in urlsToTry) {
+            try {
+                return@withContext downloadFromUrl(urlStr, progressBar, tvStatus)
+            } catch (e: Exception) {
+                lastException = e
+                // 镜像失败则继续尝试主地址，否则直接抛出
+                if (urlStr == info.mirrorDownloadUrl && info.mirrorDownloadUrl.isNotBlank()) {
+                    withContext(Dispatchers.Main) {
+                        tvStatus.text = "镜像下载失败，尝试主服务器..."
+                    }
+                }
+            }
+        }
+        throw lastException ?: Exception("所有下载地址均不可用")
+    }
+
+    private suspend fun downloadFromUrl(
+        urlStr: String,
+        progressBar: ProgressBar,
+        tvStatus: TextView
+    ): java.io.File = withContext(Dispatchers.IO) {
+        val url = URL(urlStr)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.setRequestProperty("User-Agent", "trae624")
+        conn.instanceFollowRedirects = true
+        conn.connectTimeout = 30000
+        conn.readTimeout = 30000
+        val input = conn.inputStream
+        val total = conn.contentLengthLong
+        val file = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "trae624_update.apk")
+        if (file.exists()) file.delete()
+        val output = java.io.FileOutputStream(file)
+        val buffer = ByteArray(65536)
+        var downloaded = 0L
+
+        withContext(Dispatchers.Main) {
+            if (total > 0) {
+                progressBar.max = 100
+                progressBar.isIndeterminate = false
+            } else {
+                progressBar.isIndeterminate = true
+            }
+            tvStatus.text = "正在下载..."
+        }
+
+        while (true) {
+            val read = input.read(buffer)
+            if (read == -1) break
+            output.write(buffer, 0, read)
+            downloaded += read
+            if (total > 0) {
+                val percent = ((downloaded * 100) / total).toInt()
+                withContext(Dispatchers.Main) {
+                    progressBar.progress = percent
+                    tvStatus.text = "正在下载... $percent%"
+                }
+            }
+        }
+        output.close()
+        input.close()
+        file
     }
 
     private fun installApk(file: java.io.File) {
@@ -322,11 +353,22 @@ class SettingsActivity : AppCompatActivity() {
             }
             if (downloadUrl == null) return@withContext null
 
+            // 从更新说明中解析镜像下载地址，格式：镜像下载:https://...
+            var mirrorUrl = ""
+            body.lines().forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("镜像下载:", ignoreCase = true) ||
+                    trimmed.startsWith("Mirror:", ignoreCase = true)) {
+                    mirrorUrl = trimmed.substringAfter(":").trim()
+                }
+            }
+
             UpdateInfo(
                 versionCode = parseVersionCode(tagName),
                 versionName = tagName,
                 downloadUrl = downloadUrl,
-                changelog = body
+                changelog = body,
+                mirrorDownloadUrl = mirrorUrl
             )
         } catch (e: Exception) { null }
     }
