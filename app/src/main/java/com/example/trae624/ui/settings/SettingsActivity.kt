@@ -220,12 +220,15 @@ class SettingsActivity : AppCompatActivity() {
                 val apkFile = withContext(Dispatchers.IO) {
                     val url = URL(info.downloadUrl)
                     val conn = url.openConnection() as HttpURLConnection
-                    // 跟随重定向，获取最终文件大小
+                    conn.setRequestProperty("User-Agent", "trae624")
                     conn.instanceFollowRedirects = true
-                    conn.connect()
-                    val total = conn.contentLengthLong
+                    conn.connectTimeout = 30000
+                    conn.readTimeout = 30000
+                    // 先获取输入流（会跟随重定向），再获取最终响应的大小
                     val input = conn.inputStream
+                    val total = conn.contentLengthLong
                     val file = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "trae624_update.apk")
+                    if (file.exists()) file.delete()
                     val output = java.io.FileOutputStream(file)
                     val buffer = ByteArray(8192)
                     var downloaded = 0L
@@ -263,7 +266,13 @@ class SettingsActivity : AppCompatActivity() {
                 installApk(apkFile)
             } catch (e: Exception) {
                 dialog.dismiss()
-                Toast.makeText(this@SettingsActivity, "下载失败：${e.message}", Toast.LENGTH_SHORT).show()
+                val msg = when {
+                    e.message?.contains("Unable to resolve host") == true -> "网络连接失败，请检查网络"
+                    e.message?.contains("timeout") == true -> "下载超时，请稍后重试"
+                    e.message?.contains("403") == true -> "下载受限，请稍后重试"
+                    else -> "下载失败：${e.message}"
+                }
+                Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -286,8 +295,9 @@ class SettingsActivity : AppCompatActivity() {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
+            conn.setRequestProperty("User-Agent", "trae624")
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
             if (conn.responseCode != 200) return@withContext null
 
             val response = BufferedReader(InputStreamReader(conn.inputStream)).readText()
