@@ -218,47 +218,30 @@ class SettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val apkFile = withContext(Dispatchers.IO) {
-                    val downloadDir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-                            ?: throw Exception("存储不可用")
-                    val tempFile = java.io.File(downloadDir, "trae624_update.tmp")
-
-                    // 直接使用 browser_download_url，HttpURLConnection 会自动跟随重定向
                     val url = URL(info.downloadUrl)
                     val conn = url.openConnection() as HttpURLConnection
                     conn.setRequestProperty("User-Agent", "trae624")
                     conn.instanceFollowRedirects = true
                     conn.connectTimeout = 30000
                     conn.readTimeout = 30000
+                    // 先获取输入流（会跟随重定向），再获取最终响应的大小
+                    val input = conn.inputStream
+                    val total = conn.contentLengthLong
+                    val file = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "trae624_update.apk")
+                    if (file.exists()) file.delete()
+                    val output = java.io.FileOutputStream(file)
+                    val buffer = ByteArray(8192)
+                    var downloaded = 0L
 
-                    // 断点续传
-                    var downloaded = tempFile.length()
-                    if (downloaded > 0) {
-                        conn.setRequestProperty("Range", "bytes=$downloaded-")
-                    }
-                    conn.connect()
-
-                    val code = conn.responseCode
-                    val total = when (code) {
-                        206 -> {
-                            val contentRange = conn.getHeaderField("Content-Range")
-                            contentRange?.substringAfter("/")?.toLongOrNull()
-                                    ?: (conn.contentLengthLong + downloaded)
-                        }
-                        200 -> {
-                            downloaded = 0
-                            conn.contentLengthLong
-                        }
-                        else -> throw Exception("服务器响应异常: $code")
-                    }
-
-                    val input = java.io.BufferedInputStream(conn.inputStream, 65536)
-                    val output = java.io.FileOutputStream(tempFile, code == 206)
-                    val buffer = ByteArray(65536)
-
+                    // 进度条初始化
                     withContext(Dispatchers.Main) {
-                        progressBar.max = 100
-                        progressBar.isIndeterminate = total <= 0
-                        tvStatus.text = if (code == 206) "继续下载..." else "正在下载..."
+                        if (total > 0) {
+                            progressBar.max = 100
+                            progressBar.isIndeterminate = false
+                        } else {
+                            progressBar.isIndeterminate = true
+                        }
+                        tvStatus.text = "正在下载..."
                     }
 
                     while (true) {
@@ -276,10 +259,6 @@ class SettingsActivity : AppCompatActivity() {
                     }
                     output.close()
                     input.close()
-
-                    val file = java.io.File(downloadDir, "trae624_update.apk")
-                    if (file.exists()) file.delete()
-                    tempFile.renameTo(file)
                     file
                 }
 
