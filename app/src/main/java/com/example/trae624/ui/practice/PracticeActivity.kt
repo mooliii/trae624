@@ -306,10 +306,7 @@ class PracticeActivity : AppCompatActivity() {
     private fun highlightOptions(correctAnswer: String?, selectedAnswer: String?) {
         val correctColor = ContextCompat.getColor(this, android.R.color.holo_green_dark)
         val wrongColor = ContextCompat.getColor(this, android.R.color.holo_red_dark)
-        val defaultColor = ContextCompat.getColor(this, android.R.color.black)
-
-        val correctBg = ContextCompat.getDrawable(this, R.drawable.bg_option_correct)
-        val wrongBg = ContextCompat.getDrawable(this, R.drawable.bg_option_wrong)
+        val defaultColor = ContextCompat.getColor(this, android.R.color.darker_gray)
 
         val optionMap = mapOf(
             "A" to btnOptionA, "B" to btnOptionB,
@@ -319,16 +316,12 @@ class PracticeActivity : AppCompatActivity() {
         optionMap.forEach { (key, btn) ->
             when {
                 key == correctAnswer -> {
-                    btn.background = correctBg?.constantState?.newDrawable()?.mutate()
                     btn.setTextColor(correctColor)
                 }
                 key == selectedAnswer && selectedAnswer != correctAnswer -> {
-                    btn.background = wrongBg?.constantState?.newDrawable()?.mutate()
                     btn.setTextColor(wrongColor)
                 }
                 else -> {
-                    val defaultBg = ContextCompat.getDrawable(this, R.drawable.bg_option_default)
-                    btn.background = defaultBg?.constantState?.newDrawable()?.mutate()
                     btn.setTextColor(defaultColor)
                 }
             }
