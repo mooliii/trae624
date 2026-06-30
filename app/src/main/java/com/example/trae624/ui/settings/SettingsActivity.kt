@@ -220,20 +220,34 @@ class SettingsActivity : AppCompatActivity() {
                 val apkFile = withContext(Dispatchers.IO) {
                     val url = URL(info.downloadUrl)
                     val conn = url.openConnection() as HttpURLConnection
+                    // 跟随重定向，获取最终文件大小
+                    conn.instanceFollowRedirects = true
                     conn.connect()
-                    val total = conn.contentLength.toLong()
+                    val total = conn.contentLengthLong
                     val input = conn.inputStream
                     val file = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "trae624_update.apk")
                     val output = java.io.FileOutputStream(file)
                     val buffer = ByteArray(8192)
                     var downloaded = 0L
+
+                    // 进度条初始化
+                    withContext(Dispatchers.Main) {
+                        if (total > 0) {
+                            progressBar.max = 100
+                            progressBar.isIndeterminate = false
+                        } else {
+                            progressBar.isIndeterminate = true
+                        }
+                        tvStatus.text = "正在下载..."
+                    }
+
                     while (true) {
                         val read = input.read(buffer)
                         if (read == -1) break
                         output.write(buffer, 0, read)
                         downloaded += read
                         if (total > 0) {
-                            val percent = (downloaded * 100 / total).toInt()
+                            val percent = ((downloaded * 100) / total).toInt()
                             withContext(Dispatchers.Main) {
                                 progressBar.progress = percent
                                 tvStatus.text = "正在下载... $percent%"
