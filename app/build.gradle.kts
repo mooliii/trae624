@@ -38,10 +38,11 @@ android {
         viewBinding = true
     }
 
-    applicationVariants.all {
+    applicationVariants.configureEach {
         val variant = this
-        variant.outputs.all {
-            outputFileName = "trae624_v${variant.versionName}.apk"
+        outputs.configureEach {
+            val outputImpl = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            outputImpl.outputFileName = "trae624_v${variant.versionName}.apk"
         }
     }
 }
