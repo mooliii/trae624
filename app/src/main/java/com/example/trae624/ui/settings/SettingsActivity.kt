@@ -3,6 +3,9 @@ package com.example.trae624.ui.settings
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.AbsoluteSizeSpan
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -225,7 +228,16 @@ class SettingsActivity : AppCompatActivity() {
     private fun showUpdateDialog(info: UpdateInfo) {
         AlertDialog.Builder(this)
             .setTitle("发现新版本 v${info.versionName}")
-            .setMessage(info.changelog)
+            .setMessage(
+                SpannableString(info.changelog).apply {
+                    setSpan(
+                        AbsoluteSizeSpan(12, true), // 12sp字体大小
+                        0,
+                        info.changelog.length,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+            )
             .setPositiveButton("下载更新") { _, _ -> downloadAndInstall(info) }
             .setNegativeButton("稍后再说", null)
             .show()
