@@ -192,7 +192,8 @@
                 android:layout_weight="1"
                 android:text="下一题"
                 android:textSize="14sp"
-                android:layout_marginStart="8dp" />
+                android:layout_marginStart="8dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
         </LinearLayout>
 
         <!-- 第二行：收藏 + 统计 -->

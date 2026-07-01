@@ -49,6 +49,8 @@ class PracticeActivity : AppCompatActivity() {
 
     private var lastAutoAdvancedIndex = -1
     private var isSwiping = false
+    private var touchStartX = 0f
+    private var touchStartY = 0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -139,10 +141,27 @@ class PracticeActivity : AppCompatActivity() {
             }
         })
 
-        // ScrollView非选项区域：支持左右滑动切换题目
-        scrollView.setOnTouchListener { _, event ->
+        // ScrollView：左右滑动切换题目，滑动时禁止垂直滚动
+        scrollView.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
-            false // 返回false让ScrollView仍然可以垂直滚动
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchStartX = event.x
+                    touchStartY = event.y
+                    false // 让ScrollView正常处理
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - touchStartX
+                    val dy = event.y - touchStartY
+                    // 水平滑动明显时，消费事件阻止ScrollView垂直滚动
+                    if (Math.abs(dx) > Math.abs(dy) * 2 && Math.abs(dx) > 50) {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
         }
 
         // 选项按钮区域：也支持左右滑动切换题目，但滑动时不触发选项选中
